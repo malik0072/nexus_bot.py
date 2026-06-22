@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 from telegram.ext import ApplicationBuilder, CommandHandler
 
 # --- الإعدادات ---
-# يقوم البوت بسحب التوكن تلقائياً من إعدادات GitHub Secrets
+# ملاحظة: تأكد أن اسم المتغير في Render هو BOT_TOKEN تماماً
 TOKEN = os.environ.get("BOT_TOKEN")
 DB_NAME = "nexus.db"
 
@@ -21,17 +21,20 @@ def get_valid_links(query):
     search_url = f"https://www.google.com/search?q=site:t.me+{query}"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        res = requests.get(search_url, headers=headers, timeout=5)
+        res = requests.get(search_url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
         links = []
         for a in soup.find_all('a', href=True):
             link = a['href']
-            if "t.me/" in link and "google" not in link:
-                # التحقق من أن الرابط يعمل
-                if requests.get(link, timeout=2).status_code == 200:
-                    links.append(link)
+            # استخراج الرابط الحقيقي من نتائج جوجل
+            if "url?q=https://t.me/" in link:
+                clean_link = link.split("url?q=")[1].split("&")[0]
+                links.append(clean_link)
+        
         return list(set(links))[:5]
-    except: return []
+    except Exception as e:
+        print(f"Error searching: {e}")
+        return []
 
 # --- أوامر البوت ---
 async def start(update, context):
@@ -42,22 +45,25 @@ async def search_command(update, context):
     if not query:
         await update.message.reply_text("يرجى كتابة كلمة للبحث، مثال: /search programming")
         return
-    await update.message.reply_text("جاري البحث في تيلجرام... 🔍")
+    
+    status_msg = await update.message.reply_text("جاري البحث في تيلجرام... 🔍")
     results = get_valid_links(query)
+    
     if results:
-        await update.message.reply_text("إليك النتائج:\n\n" + "\n".join(results))
+        await status_msg.edit_text("إليك النتائج:\n\n" + "\n".join(results))
     else:
-        await update.message.reply_text("لم يتم العثور على مجموعات فعالة.")
+        await status_msg.edit_text("لم يتم العثور على مجموعات.")
 
 # --- التشغيل ---
 if __name__ == '__main__':
     if not TOKEN:
-        print("خطأ: يرجى إعداد BOT_TOKEN في إعدادات GitHub Secrets")
+        print("خطأ: يرجى إعداد BOT_TOKEN في إعدادات Render")
     else:
         init_db()
+        print("جاري تشغيل البوت...")
         app = ApplicationBuilder().token(TOKEN).build()
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("search", search_command))
-        print("Nexus TG يعمل الآن...")
+        print("Nexus TG يعمل الآن!")
         app.run_polling()
-                  
+        
